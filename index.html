@@ -155,6 +155,17 @@ body.chatopen .chatbar{display:none!important}
 .gamecard{padding:12px}
 .pl{padding:8px 10px}
 }
+.m{position:relative;cursor:pointer}.m.sys{cursor:default}.m.hasrx{margin-bottom:14px}
+.rx{position:absolute;bottom:-13px;right:10px;background:var(--card);border:1px solid var(--sep);border-radius:99px;padding:1px 7px;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,.15);animation:msgin .3s var(--ease);color:var(--tx)}
+.m.them .rx{right:auto;left:10px}
+.rbar{position:fixed;z-index:30;display:flex;gap:2px;padding:6px 8px;background:var(--card);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid var(--sep);border-radius:99px;box-shadow:var(--sh);animation:msgin .25s var(--ease)}
+.rbar button{border:0;background:none;font-size:24px;padding:3px 6px;cursor:pointer;border-radius:50%;transition:transform .2s var(--ease)}.rbar button:hover{transform:scale(1.3)}.rbar button.on{background:var(--fill)}
+.hsheet{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.4);display:flex;align-items:flex-end;justify-content:center;animation:in .25s}
+.hbox{width:min(520px,100%);max-height:82vh;overflow:auto;border-radius:28px 28px 0 0}
+@media(min-width:700px){.hsheet{align-items:center}.hbox{border-radius:28px}}
+.hgrid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.hgrid button{aspect-ratio:1;border:0;border-radius:16px;background:var(--fill);font-size:28px;cursor:pointer;transition:transform .2s var(--ease)}.hgrid button:hover{transform:scale(1.1)}
+.hgrid button.sel{background:var(--blue);box-shadow:0 6px 16px #0a84ff66}
 </style>
 </head>
 <body>
@@ -187,7 +198,7 @@ body.chatopen .chatbar{display:none!important}
 
 <!-- ROOM -->
 <section class="screen" id="s-room">
-  <div class="topbar"><button class="btn sec sm" id="leave">‹ Leave</button><div class="row2" style="align-items:center"><button class="btn sec sm" id="snd" aria-label="Toggle sound">🔊</button><span class="pill"><span class="dot" id="dot"></span><span id="cstat">Waiting</span></span></div></div>
+  <div class="topbar"><button class="btn sec sm" id="leave">‹ Leave</button><div class="row2" style="align-items:center"><button class="btn sec sm" id="heroBtn" hidden></button><button class="btn sec sm" id="snd" aria-label="Toggle sound">🔊</button><span class="pill"><span class="dot" id="dot"></span><span id="cstat">Waiting</span></span></div></div>
   <div class="room" id="room" data-tab="game">
     <div class="chips" id="chips" style="grid-column:1/-1"></div>
     <div class="card gamecard">
@@ -205,6 +216,7 @@ body.chatopen .chatbar{display:none!important}
     </div>
   </div>
 </section>
+<div class="hsheet" id="hsheet" hidden><div class="hbox card"><h2>Choose your hero</h2><div class="lbl">Flags</div><div class="hgrid" id="hflags"></div><div class="lbl">Characters</div><div class="hgrid" id="hemo"></div><button class="btn sec" id="hclose" style="margin-top:8px">Close</button></div></div>
 <button class="chatbar" id="cbar"><span>💬 Chat</span><span class="cpv" id="cpv">Say hi</span><span class="badge" id="unread" hidden>0</span></button>
 <div class="toast" id="toast"></div>
 
@@ -282,13 +294,13 @@ const send=o=>{if(conn&&conn.open)conn.send(o)};
 function onData(d){
   if(d.t==='full'){toast('This room is full');leave()}
   else if(d.t==='hello'){
-    opp={name:String(d.p.name).slice(0,16),av:d.p.av|0,col:d.p.col|0};
+    opp={name:String(d.p.name).slice(0,16),av:d.p.av|0,col:d.p.col|0,hero:typeof d.p.hero==='string'&&d.p.hero.length<=16?d.p.hero:''};
     setConn(true,'Connected');sys(opp.name+' joined');$('#waiting').hidden=true;$('#play').hidden=false;
     wins=[0,0];chime([660,880]);if(isHost)startGame(0,true)
   }
-  else if(d.t==='new'){if(GAMES[d.gid]&&d.gid!==gid){gid=d.gid;wins=[0,0]}startGame(d.first|0,false,d.mid)}else if(d.t==='tt')tttMove(d.i,1-myIdx());else if(d.t==='shot')onShot(d);else if(d.t==='sync')onSync(d);
+  else if(d.t==='new'){if(GAMES[d.gid]&&d.gid!==gid){gid=d.gid;wins=[0,0]}startGame(d.first|0,false,d.mid)}else if(d.t==='tt')tttMove(d.i,1-myIdx());else if(d.t==='mr')onMr(d);else if(d.t==='hero')onHero(d);else if(d.t==='shot')onShot(d);else if(d.t==='sync')onSync(d);
   else if(d.t==='move'&&gid==='dots'&&g&&!g.over&&g.turn!==myIdx()){play(d.k,d.r,d.c,1-myIdx())}
-  else if(d.t==='chat'){$('#typing').hidden=true;addMsg(String(d.x).slice(0,500),false);tick(900,.1);tick(1200,.12,.08)}else if(d.t==='react'&&String(d.e).length<9)float(d.e);else if(d.t==='typing')showTyping();
+  else if(d.t==='chat'){$('#typing').hidden=true;addMsg(String(d.x).slice(0,500),false,/^[a-z0-9]{1,12}$/.test(String(d.id))?String(d.id):'');tick(900,.1);tick(1200,.12,.08)}else if(d.t==='react'&&String(d.e).length<9)float(d.e);else if(d.t==='typing')showTyping();
 }
 function leave(){reset();show('s-lobby')}
 $('#leave').onclick=leave;
@@ -298,13 +310,13 @@ $('#copyc').onclick=()=>copy(code,'Code copied');
 $('#copyl').onclick=()=>copy(url(),'Invite link copied');
 
 /* ---------- Chat ---------- */
-function addMsg(x,mine){
-  const d=document.createElement('div');d.className='m '+(mine?'me':'them');d.textContent=x;$('#msgs').append(d);scroll();$('#cpv').textContent=(mine?'You: ':'')+x;
+function addMsg(x,mine,id){
+  const d=document.createElement('div');d.className='m '+(mine?'me':'them');if(id)d.dataset.id=id;d.textContent=x;$('#msgs').append(d);scroll();$('#cpv').textContent=(mine?'You: ':'')+x;
   if(!mine&&$('#room').dataset.tab!=='chat'&&innerWidth<860){unread++;const b=$('#unread');b.textContent=unread;b.hidden=false}
 }
 function sys(x){const d=document.createElement('div');d.className='m sys';d.textContent=x;$('#msgs').append(d);scroll()}
 const scroll=()=>{const m=$('#msgs');m.scrollTop=m.scrollHeight};
-function sendChat(){const i=$('#cin'),x=i.value.trim();if(!x)return;if(!conn||!conn.open)return toast('Not connected yet');send({t:'chat',x});addMsg(x,true);i.value=''}
+function sendChat(){const i=$('#cin'),x=i.value.trim();if(!x)return;if(!conn||!conn.open)return toast('Not connected yet');const id=Math.random().toString(36).slice(2,9);send({t:'chat',x,id});addMsg(x,true,id);i.value=''}
 $('#csend').onclick=sendChat;$('#cin').onkeydown=e=>{if(e.key==='Enter')sendChat()};
 function chat(o){$('#room').dataset.tab=o?'chat':'game';document.body.classList.toggle('chatopen',o);if(o){unread=0;$('#unread').hidden=true;scroll()}}
 $('#cbar').onclick=()=>chat(true);$('#cclose').onclick=()=>chat(false);
@@ -315,7 +327,7 @@ const pl=()=>isHost?[me,opp]:[opp,me];
 function pcol(i){const p=pl();return i===0||p[0].col!==p[1].col?PAL[p[i].col]:PAL[(p[1].col+3)%PAL.length]}
 function startGame(first,announce,mm){
   socStop();mid=mm||(Math.random()*1e9|0);if(announce)send({t:'new',first,gid,mid});
-  const so=gid==='soccer';$('#board').hidden=so;$('#pitch').hidden=!so;$('#tbar').hidden=!so;$('#players').hidden=so;$('#again').hidden=true;$('#status').innerHTML='';chips();
+  const so=gid==='soccer';$('#board').hidden=so;$('#pitch').hidden=!so;$('#tbar').hidden=!so;$('#heroBtn').hidden=!so;$('#players').hidden=so;$('#again').hidden=true;$('#status').innerHTML='';chips();
   if(gid==='ttt')return tttStart(first);if(so)return socStart(first);
   const m=(r,c)=>Array.from({length:r},()=>Array(c).fill(-1));
   g={h:m(N+1,N),v:m(N,N+1),b:m(N,N),turn:first,score:[0,0],shown:[0,0],over:false,n:0,first};lastMove=null;
@@ -422,7 +434,7 @@ function tdraw(){
 }
 
 /* ----- Soccer Heroes: pull back, aim, shoot (turn-based physics) ----- */
-const PW=400,PH=640,GD=38,CH=PH+GD*2,DR=23,BRAD=13,GX0=135,GX1=265,WIN=3,VMAX=1250,MAXD=120,DT=1/120,TT=20,FD=.9859,FB=.9929;
+const PW=400,PH=640,GD=38,CH=PH+GD*2,DR=23,BRAD=13,GX0=135,GX1=265,WIN=3,VMAX=1250,MAXD=120,DT=1/120,TT=20,FD=.9915,FB=.9955,FDC=70,FBC=32,CR=28;
 const POSTS=[[GX0,0],[GX1,0],[GX0,PH],[GX1,PH]],FORM=[[200,570],[105,490],[295,490],[135,400],[265,400]];
 let sg=null,pend=null,qshot=null,aim=null,needSync=false,socRaf=0,socLast=0,acc=0,uk='',parts=[],shake=0,banner=null,cvs=null,ctx=null,lastSnd=0,lastPct=-1;
 const r1=v=>Math.round(v*10)/10;
@@ -432,22 +444,29 @@ function burst(x,y,n,col,sp){for(let i=0;i<n;i++){const a=Math.random()*6.28,v=M
 function roar(){if(muted)return;try{AC=AC||new(window.AudioContext||window.webkitAudioContext)();const n=AC.sampleRate*1.3|0,buf=AC.createBuffer(1,n,AC.sampleRate),d=buf.getChannelData(0);for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*Math.sin(Math.PI*i/n);const s=AC.createBufferSource(),f=AC.createBiquadFilter(),q=AC.createGain();f.type='bandpass';f.frequency.value=900;q.gain.value=.3;s.buffer=buf;s.connect(f);f.connect(q);q.connect(AC.destination);s.start()}catch(e){}}
 function fxHit(v,a,b){if(v<90)return;burst(b?(a.x+b.x)/2:a.x,b?(a.y+b.y)/2:a.y,Math.min(7,v/110|0),'#fff',v*.5);const n=performance.now();if(n-lastSnd>35){lastSnd=n;tick(160+Math.min(500,v/2.5),.06,0,Math.min(.13,.02+v/7000))}}
 function evGoal(w){roar();chime([523,659,784,1047]);shake=14;buzz([30,40,60]);burst(PW/2,w?PH:0,90,null,520);banner={t:'GOAL!',sub:pl()[w].name,a:2,age:0,c:pcol(w)}}
+function corner(o,e){
+  for(const[cx,cy,sx,sy]of[[CR,CR,-1,-1],[PW-CR,CR,1,-1],[CR,PH-CR,-1,1],[PW-CR,PH-CR,1,1]]){
+    if((sx<0?o.x<cx:o.x>cx)&&(sy<0?o.y<cy:o.y>cy)){const dx=o.x-cx,dy=o.y-cy,q=dx*dx+dy*dy,lim=CR-o.r;
+      if(lim>0&&q>lim*lim){const dist=Math.sqrt(q),nx=dx/dist,ny=dy/dist;o.x=cx+nx*lim;o.y=cy+ny*lim;const vn=o.vx*nx+o.vy*ny;if(vn>0){o.vx-=(1+e)*vn*nx;o.vy-=(1+e)*vn*ny}}}
+  }
+}
 function simStep(){
   const G=sg,d=G.d,b=d[10];
-  for(let i=0;i<11;i++){const o=d[i],f=i===10?FB:FD;o.x+=o.vx*DT;o.y+=o.vy*DT;o.vx*=f;o.vy*=f;if(o.vx*o.vx+o.vy*o.vy<16){o.vx=0;o.vy=0}}
-  for(let i=0;i<11;i++)for(let j=i+1;j<11;j++){
+  for(let i=0;i<11;i++){const o=d[i];o.x+=o.vx*DT;o.y+=o.vy*DT;const s2=o.vx*o.vx+o.vy*o.vy;if(s2>0){const sp=Math.sqrt(s2),nv=sp*(i===10?FB:FD)-(i===10?FBC:FDC)*DT;if(nv<6){o.vx=0;o.vy=0}else{const k=nv/sp;o.vx*=k;o.vy*=k}}}
+  for(let pass=0;pass<2;pass++)for(let i=0;i<11;i++)for(let j=i+1;j<11;j++){
     const a=d[i],c=d[j],dx=c.x-a.x,dy=c.y-a.y,rr=a.r+c.r,q=dx*dx+dy*dy;if(q>=rr*rr||q===0)continue;
     const dist=Math.sqrt(q),nx=dx/dist,ny=dy/dist,ov=rr-dist,t=a.m+c.m;
     a.x-=nx*ov*c.m/t;a.y-=ny*ov*c.m/t;c.x+=nx*ov*a.m/t;c.y+=ny*ov*a.m/t;
     const vn=(c.vx-a.vx)*nx+(c.vy-a.vy)*ny;
-    if(vn<0){const jj=-(1+(j===10?.92:.9))*vn/(1/a.m+1/c.m);a.vx-=jj*nx/a.m;a.vy-=jj*ny/a.m;c.vx+=jj*nx/c.m;c.vy+=jj*ny/c.m;fxHit(-vn,a,c)}
+    if(vn<0){const e0=j===10?.92:.9,e=-vn>150?e0:e0*(.4+.6*-vn/150),jj=-(1+e)*vn/(1/a.m+1/c.m);a.vx-=jj*nx/a.m;a.vy-=jj*ny/a.m;c.vx+=jj*nx/c.m;c.vy+=jj*ny/c.m;fxHit(-vn,a,c)}
   }
   for(let i=0;i<10;i++){const o=d[i];
     if(o.x<o.r){o.x=o.r;fxHit(-o.vx,o,null);o.vx=Math.abs(o.vx)*.8}else if(o.x>PW-o.r){o.x=PW-o.r;fxHit(o.vx,o,null);o.vx=-Math.abs(o.vx)*.8}
-    if(o.y<o.r){o.y=o.r;fxHit(-o.vy,o,null);o.vy=Math.abs(o.vy)*.8}else if(o.y>PH-o.r){o.y=PH-o.r;fxHit(o.vy,o,null);o.vy=-Math.abs(o.vy)*.8}}
+    if(o.y<o.r){o.y=o.r;fxHit(-o.vy,o,null);o.vy=Math.abs(o.vy)*.8}else if(o.y>PH-o.r){o.y=PH-o.r;fxHit(o.vy,o,null);o.vy=-Math.abs(o.vy)*.8}corner(o,.8)}
   if(b.y>=0&&b.y<=PH){
     if(b.x<BRAD){b.x=BRAD;fxHit(-b.vx,b,null);b.vx=Math.abs(b.vx)*.88}else if(b.x>PW-BRAD){b.x=PW-BRAD;fxHit(b.vx,b,null);b.vx=-Math.abs(b.vx)*.88}
     if(!(b.x>GX0&&b.x<GX1)){if(b.y<BRAD){b.y=BRAD;fxHit(-b.vy,b,null);b.vy=Math.abs(b.vy)*.88}else if(b.y>PH-BRAD){b.y=PH-BRAD;fxHit(b.vy,b,null);b.vy=-Math.abs(b.vy)*.88}}
+    corner(b,.88);
   }else{
     if(b.x<GX0+BRAD){b.x=GX0+BRAD;b.vx=Math.abs(b.vx)*.3}else if(b.x>GX1-BRAD){b.x=GX1-BRAD;b.vx=-Math.abs(b.vx)*.3}
     if(b.y<-GD+BRAD){b.y=-GD+BRAD;b.vy=Math.abs(b.vy)*.3}else if(b.y>PH+GD-BRAD){b.y=PH+GD-BRAD;b.vy=-Math.abs(b.vy)*.3}
@@ -494,13 +513,13 @@ function onOver(){
 function socStart(first){
   g={first,over:false,done:false,shown:[0,0]};cvs=$('#pitch');ctx=cvs.getContext('2d');
   sg=mkG(first);pend=qshot=aim=null;needSync=false;parts=[];shake=0;banner=null;acc=0;uk='';lastPct=-1;socLast=performance.now();
-  $('#again').hidden=true;if(!socRaf)socRaf=requestAnimationFrame(socLoop);
+  $('#again').hidden=true;$('#heroBtn').textContent=(me.hero||AVS[me.av])+' Hero';if(me.hero)send({t:'hero',c:me.hero});else openHero();if(!socRaf)socRaf=requestAnimationFrame(socLoop);
 }
 function socStop(){if(socRaf)cancelAnimationFrame(socRaf);socRaf=0;sg=null;aim=null}
 function socLoop(ts){
   socRaf=requestAnimationFrame(socLoop);const dt=Math.min(.05,(ts-socLast)/1e3||0);socLast=ts;const G=sg;if(!G||!opp)return;
   if(G.ph==='run'||G.ph==='goal'){acc+=dt;let n=0;while(acc>=DT&&n<12&&(sg.ph==='run'||sg.ph==='goal')){simStep();acc-=DT;n++}if(n>=12||sg.ph==='aim'||sg.ph==='over')acc=0}else acc=0;
-  if(G.ph==='aim'){G.tt=Math.max(0,G.tt-dt);if(isHost&&G.tt<=0){G.turn=1-G.turn;G.tt=TT;needSync=true;aim=null}}
+  if(G.ph==='aim'&&hs.hidden){G.tt=Math.max(0,G.tt-dt);if(isHost&&G.tt<=0){G.turn=1-G.turn;G.tt=TT;needSync=true;aim=null}}
   post();
   const k=G.ph+G.turn+G.s+g.done;
   if(k!==uk){uk=k;if(!g.done)$('#status').textContent=G.ph==='aim'?(G.turn===myIdx()?'Your turn: pull a player back and release':opp.name+"'s turn"):'';
@@ -574,13 +593,45 @@ function render(){
   parts.forEach(p=>{c.globalAlpha=Math.max(0,p.l);c.fillStyle=p.c;c.fillRect(p.x,p.y,p.s,p.s*.6)});c.globalAlpha=1;
   c.restore();
   c.textAlign='center';c.textBaseline='middle';c.font='25px '+EF;c.fillStyle='#000';
-  for(let i=0;i<10;i++){const o=G.d[i];c.fillText(AVS[P[i<5?0:1].av],X(o.x),Y(o.y)+1)}
+  for(let i=0;i<10;i++){const o=G.d[i];c.fillText(heroOf(i<5?0:1),X(o.x),Y(o.y)+1)}
   c.font='900 52px '+FF;c.fillStyle='rgba(255,255,255,.55)';c.fillText(G.s[me],36,CH/2+36);c.fillText(G.s[1-me],36,CH/2-36);
   c.font='700 11px '+FF;c.fillText('YOU',36,CH/2+68);c.fillText(P[1-me].name.slice(0,8),36,CH/2-68);
   if(banner){const s=1+Math.max(0,.3-banner.age)*3;c.save();c.translate(PW/2,CH/2);c.scale(s,s);c.globalAlpha=Math.min(1,banner.a*2);
     c.font='900 '+(banner.sub?64:40)+'px '+FF;c.lineWidth=8;c.strokeStyle='rgba(0,0,0,.45)';c.strokeText(banner.t,0,0);c.fillStyle=banner.c;c.fillText(banner.t,0,0);
     if(banner.sub){c.font='700 24px '+FF;c.fillStyle='#fff';c.fillText(banner.sub,0,48)}c.restore()}
 }
+/* ----- Message reactions ----- */
+const RXL=['❤️','😂','😮','👍','😢','🔥'],RX={};
+function setReact(id,who,e){
+  (RX[id]=RX[id]||['',''])[who]=e;const el=$('#msgs').querySelector('[data-id="'+id+'"]');if(!el)return;
+  const old=el.querySelector('.rx');if(old)old.remove();const t=RX[id].filter(Boolean);el.classList.toggle('hasrx',t.length>0);
+  if(t.length){const r=document.createElement('span');r.className='rx';r.textContent=t.join('');el.append(r)}
+}
+function onMr(d){const id=String(d.id||''),e=d.e===''?'':String(d.e);if(!/^[a-z0-9]{1,12}$/.test(id)||(e!==''&&!RXL.includes(e)))return;setReact(id,1-myIdx(),e);if(e)tick(900,.06)}
+function hideRb(){const o=document.querySelector('.rbar');if(o)o.remove()}
+$('#msgs').addEventListener('click',e=>{
+  const el=e.target.closest('.m[data-id]');hideRb();if(!el)return;
+  const id=el.dataset.id,mine=(RX[id]||['',''])[myIdx()],bar=document.createElement('div');bar.className='rbar';
+  bar.innerHTML=RXL.map(x=>`<button class="${x===mine?'on':''}">${x}</button>`).join('');
+  const r=el.getBoundingClientRect();let top=r.top-54;if(top<8)top=r.bottom+8;
+  bar.style.top=top+'px';bar.style.left=Math.max(8,Math.min(innerWidth-270,el.classList.contains('me')?r.right-262:r.left))+'px';
+  bar.onclick=ev=>{const b=ev.target.closest('button');if(!b)return;const v=b.textContent===mine?'':b.textContent;setReact(id,myIdx(),v);send({t:'mr',id,e:v});hideRb();tick(700,.06)};
+  document.body.append(bar);
+});
+document.addEventListener('click',e=>{if(!e.target.closest('.rbar')&&!e.target.closest('.m[data-id]'))hideRb()});
+/* ----- Soccer heroes (flags / emoji) ----- */
+const hs=$('#hsheet');
+const FLAGS='AZ TR IR RU US GB DE FR ES IT PT BR AR NL BE HR JP KR SA AE EG MA CA MX SE PL UA GE CH GR'.split(' ').map(c=>String.fromCodePoint(...[...c].map(ch=>127397+ch.charCodeAt(0))));
+const EMO=['⚽','🦁','🐯','🦊','🐼','🐸','🦄','🐙','🔥','⚡','👑','💎','🚀','👾','🤖','👽','💀','🎃','😎','🥶','🤠','🥷','🦸','🧙'];
+const heroOf=i=>{const p=pl()[i];return p.hero||AVS[p.av]};
+function openHero(){
+  const cur=me.hero||AVS[me.av],b=a=>a.map(x=>`<button class="${x===cur?'sel':''}">${x}</button>`).join('');
+  $('#hflags').innerHTML=b(FLAGS);$('#hemo').innerHTML=b(EMO);hs.hidden=false;
+}
+function setHero(c){me.hero=c;store.set(me);send({t:'hero',c});$('#heroBtn').textContent=c+' Hero';hs.hidden=true;tick(700,.08)}
+function onHero(d){const c=String(d.c||'');if(opp&&c.length>0&&c.length<=16)opp.hero=c}
+hs.onclick=e=>{if(e.target===hs||e.target.id==='hclose'){hs.hidden=true;return}const b=e.target.closest('.hgrid button');if(b)setHero(b.textContent)};
+$('#heroBtn').onclick=openHero;
 pickUi();
 
 /* ---------- Init ---------- */
